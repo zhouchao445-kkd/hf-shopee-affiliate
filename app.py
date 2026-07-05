@@ -1,173 +1,192 @@
 """
-Shopee 精选联盟数据分析 - Hugging Face Spaces
+Shopee 精选联盟数据分析 - HF Spaces
 """
 import gradio as gr
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import json
-from datetime import datetime
-
-def parse_file(file):
-    """解析上传的 Excel/CSV 文件"""
-    if file is None:
-        return None, None, None, None, None, None, None
-    try:
-        if file.name.endswith('.csv'):
-            df = pd.read_csv(file.name, encoding='utf-8-sig')
-        else:
-            df = pd.read_excel(file.name)
-        return df, None, None, None, None, None, None
-    except Exception as e:
-        return None, str(e), None, None, None, None, None
 
 def analyze_affiliate(file):
     """分析精选联盟数据"""
     if file is None:
-        return "请上传文件", {}, {}, {}, {}
+        return None, None, None, None, None, None
 
     try:
         if file.name.endswith('.csv'):
             df = pd.read_csv(file.name, encoding='utf-8-sig')
         else:
             df = pd.read_excel(file.name)
-
-        # 标准化列名
         df.columns = [c.strip() for c in df.columns]
 
-        # 找关键列
-        date_col = next((c for c in df.columns if 'Waktu Pesanan' in c or '订单时间' in c), None)
-        status_col = next((c for c in df.columns if '订单状态' in c), None)
-        plat_col = next((c for c in df.columns if c == 'Platform'), None)
-        aff_name_col = next((c for c in df.columns if 'Nama Affiliate' in c), None)
-        aff_user_col = next((c for c in df.columns if 'Username Affiliate' in c), None)
-        comm_col = next((c for c in df.columns if 'Estimasi Komisi Affiliate per Pesanan' in c), None)
-        purch_col = next((c for c in df.columns if 'Nilai Pembelian' in c and 'Estimasi' not in c), None)
-        prod_col = next((c for c in df.columns if '产品名称' in c), None)
-        promo_col = next((c for c in df.columns if 'Jenis Promo' in c), None)
-        cut_col = next((c for c in df.columns if 'Status Pemotongan' in c), None)
+        # 列名映射
+        def find_col(key): 
+            return next((c for c in df.columns if key in c), None)
 
-        # 解析佣金
-        def to_num(val):
-            try:
-                return float(str(val).replace(',', '').replace(' ', ''))
-            except:
-                return 0.0
+        date_c   = find_col('Waktu Pesanan')
+        status_c = find_col('订单状态')
+        plat_c   = 'Platform'
+        aff_nm   = find_col('Nama Affiliate')
+        aff_un   = find_col('Username Affiliate')
+        comm_c   = find_col('Estimasi Komisi Affiliate per Pesanan')
+        purch_c  = find_col('Nilai Pembelian')
+        prod_c   = find_col('产品名称')
+        promo_c  = find_col('Jenis Promo')
+        cut_c    = find_col('Status Pemotongan')
 
-        df['_comm'] = df[comm_col].apply(to_num) if comm_col else 0
-        df['_purch'] = df[purch_col].apply(to_num) if purch_col else 0
-        df['_date'] = pd.to_datetime(df[date_col], errors='coerce') if date_col else pd.NaT
-        df['_cut'] = df[cut_col].fillna('') if cut_col else ''
+        def to_num(v):
+            try: return float(str(v).replace(',','').replace(' ',''))
+            except: return 0.0
 
-        total = len(df)
+        df['_comm']  = df[comm_c].apply(to_num) if comm_c else 0
+        df['_purch'] = df[purch_c].apply(to_num) if purch_c else 0
+        df['_date']  = pd.to_datetime(df[date_c], errors='coerce') if date_c else pd.NaT
+        df['_cut']   = df[cut_c].fillna('') if cut_c else ''
+
+        total      = len(df)
         total_comm = df['_comm'].sum()
-        settled = df[df['_cut'] == 'Telah Dipotong']['_comm'].sum()
-        pending = total_comm - settled
+        settled    = df[df['_cut'] == 'Telah Dipotong']['_comm'].sum()
+        pending    = total_comm - settled
+        unique_aff= df[aff_nm].nunique() if aff_nm else 0
+        unique_plat= df[plat_c].nunique() if plat_c else 0
+        date_range = (f"{df['_date'].min().strftime('%Y-%m-%d')} ~ {df['_date'].max().strftime('%Y-%m-%d')}" 
+                     if date_c and not df['_date'].isna().all() else "未知")
 
-        # 状态统计
-        if status_col:
-            status_counts = df[status_col].value_counts().to_dict()
-        else:
-            status_counts = {}
+        # --- 概览表格 ---
+        summary_data = {
+            '指标': ['总订单', '日期范围', '预计总佣金', '已结算佣金', '待结算佣金', '合作达人', '推广平台'],
+            '数值': [
+                str(total), date_range,
+                f"Rp {total_comm:,.0f}", f"Rp {settled:,.0f}", f"Rp {pending:,.0f}",
+                str(unique_aff), str(unique_plat)
+            ]
+        }
+        summary_df = pd.DataFrame(summary_data)
 
-        # 平台统计
-        if plat_col:
-            plat_stats = df.groupby(plat_col).agg(
-                订单数=('_comm', 'count'),
-                总佣金=('_comm', 'sum'),
-                销售额=('_purch', 'sum')
-            ).reset_index()
-            plat_stats['均佣金'] = plat_stats['总佣金'] / plat_stats['订单数']
-            plat_stats = plat_stats.sort_values('总佣金', ascending=False)
-        else:
-            plat_stats = pd.DataFrame(columns=['Platform', '订单数', '总佣金', '销售额', '均佣金'])
-
-        # 达人排行
-        if aff_name_col and comm_col:
-            aff_stats = df.groupby(aff_name_col).agg(
-                订单数=('_comm', 'count'),
-                总佣金=('_comm', 'sum'),
-                销售额=('_purch', 'sum')
-            ).reset_index()
-            if aff_user_col:
-                aff_stats['用户名'] = df.groupby(aff_name_col)[aff_user_col].first().values
-            aff_stats['均佣金'] = aff_stats['总佣金'] / aff_stats['订单数']
-            aff_stats = aff_stats.sort_values('总佣金', ascending=False).head(20)
-        else:
-            aff_stats = pd.DataFrame()
-
-        # 每日趋势
-        if date_col:
-            daily_stats = df.groupby(df['_date'].dt.strftime('%Y-%m-%d')).agg(
-                订单数=('_comm', 'count'),
-                总佣金=('_comm', 'sum')
-            ).reset_index()
-            daily_stats.columns = ['日期', '订单数', '佣金']
-            daily_stats = daily_stats.sort_values('日期')
-        else:
-            daily_stats = pd.DataFrame()
-
-        # 促销类型
-        if promo_col:
-            promo_stats = df.groupby(promo_col).agg(
-                订单数=('_comm', 'count'),
-                总佣金=('_comm', 'sum')
+        # --- 平台分布图表 ---
+        if plat_c:
+            plat_df = df.groupby(plat_c).agg(
+                订单数=('_comm','count'), 总佣金=('_comm','sum'), 销售额=('_purch','sum')
             ).reset_index().sort_values('总佣金', ascending=False)
+            plat_df['均佣金'] = plat_df['总佣金'] / plat_df['订单数']
+            plat_df.columns = ['平台', '订单数', '总佣金', '销售额', '均佣金']
+            plat_df['总佣金_万'] = plat_df['总佣金'] / 10000
+
+            fig_plat = make_subplots(rows=1, cols=2, subplot_titles=('平台佣金分布 (万Rp)', '平台订单数'))
+            colors = px.colors.qualitative.Set2[:len(plat_df)]
+            fig_plat.add_trace(go.Bar(
+                x=plat_df['平台'], y=plat_df['总佣金_万'],
+                marker_color=colors, hovertemplate='%{x}<br>%{y:.1f}万Rp<extra></extra>'
+            ), row=1, col=1)
+            fig_plat.add_trace(go.Bar(
+                x=plat_df['平台'], y=plat_df['订单数'],
+                marker_color=colors, hovertemplate='%{x}<br>%{y}单<extra></extra>'
+            ), row=1, col=2)
+            fig_plat.update_layout(title_text='📱 平台分布', showlegend=False, height=400)
+            fig_plat.update_xaxes(tickangle=30)
         else:
-            promo_stats = pd.DataFrame()
+            fig_plat = None
 
-        # 日期范围
-        if date_col:
-            date_range = f"{df['_date'].min().strftime('%Y-%m-%d')} ~ {df['_date'].max().strftime('%Y-%m-%d')}"
+        # --- 达人排行图表 ---
+        if aff_nm:
+            aff_df = df.groupby(aff_nm).agg(
+                订单数=('_comm','count'), 总佣金=('_comm','sum'), 销售额=('_purch','sum')
+            ).reset_index().sort_values('总佣金', ascending=False).head(20)
+            aff_df['均佣金'] = aff_df['总佣金'] / aff_df['订单数']
+            if aff_un:
+                aff_df['用户名'] = df.groupby(aff_nm)[aff_un].first().values
+            aff_df.columns = ['达人', '订单数', '总佣金', '销售额', '均佣金', '用户名'][:len(aff_df.columns)]
+            if '用户名' in aff_df.columns:
+                aff_df['达人'] = aff_df['达人'] + '<br><span style="font-size:11px;color:#888">@' + aff_df['用户名'].astype(str) + '</span>'
+            aff_df['总佣金_万'] = aff_df['总佣金'] / 10000
+            fig_aff = px.bar(
+                aff_df, x='总佣金_万', y='达人', orientation='h',
+                title='🏆 达人佣金排行榜 TOP 20',
+                color='总佣金_万', color_continuous_scale='Greens',
+                hovertemplate='%{y}<br>%{x:.1f}万Rp<extra></extra>'
+            )
+            fig_aff.update_layout(showlegend=False, height=max(500, len(aff_df)*28))
+            fig_aff.update_yaxes(autorange='reversed')
         else:
-            date_range = "未知"
+            fig_aff = None
 
-        unique_aff = df[aff_name_col].nunique() if aff_name_col else 0
-        unique_plat = df[plat_col].nunique() if plat_col else 0
+        # --- 每日趋势 ---
+        if date_c:
+            daily_df = df.groupby(df['_date'].dt.strftime('%Y-%m-%d')).agg(
+                订单数=('_comm','count'), 总佣金=('_comm','sum')
+            ).reset_index().sort_values('_date')
+            daily_df.columns = ['日期', '订单数', '佣金']
+            daily_df['佣金_万'] = daily_df['佣金'] / 10000
+            fig_daily = make_subplots(rows=2, cols=1, subplot_titles=('每日佣金 (万Rp)', '每日订单数'))
+            fig_daily.add_trace(go.Scatter(
+                x=daily_df['日期'], y=daily_df['佣金_万'],
+                mode='lines+markers', fill='tozeroy', line=dict(color='#0ea5e9'),
+                hovertemplate='%{x}<br>%{y:.1f}万Rp<extra></extra>'
+            ), row=1, col=1)
+            fig_daily.add_trace(go.Bar(
+                x=daily_df['日期'], y=daily_df['订单数'],
+                marker_color='#22c55e', hovertemplate='%{x}<br>%{y}单<extra></extra>'
+            ), row=2, col=1)
+            fig_daily.update_layout(title_text='📈 每日趋势', showlegend=False, height=450)
+            fig_daily.update_xaxes(tickangle=30)
+        else:
+            fig_daily = None
 
-        # 返回概览文本
-        overview = f"""**📊 数据概览**
-- 总订单：**{total} 条**
-- 日期范围：{date_range}
-- 预计总佣金：**Rp {total_comm:,.0f}**
-- 已结算佣金：Rp {settled:,.0f}
-- 待结算佣金：Rp {pending:,.0f}
-- 合作达人：{unique_aff} 位
-- 推广平台：{unique_plat} 个"""
+        # --- 促销类型 ---
+        if promo_c:
+            promo_df = df.groupby(promo_c).agg(
+                订单数=('_comm','count'), 总佣金=('_comm','sum')
+            ).reset_index().sort_values('总佣金', ascending=False)
+            promo_df.columns = ['促销类型', '订单数', '总佣金']
+            promo_df['总佣金_万'] = promo_df['总佣金'] / 10000
+            fig_promo = px.pie(
+                promo_df, values='总佣金_万', names='促销类型',
+                title='🎁 促销类型佣金占比',
+                hole=0.4, hovertemplate='%{label}<br>%{percent}<br>%{value:.1f}万Rp<extra></extra>'
+            )
+            fig_promo.update_layout(height=400)
+        else:
+            fig_promo = None
 
-        return overview, plat_stats, aff_stats, daily_stats, promo_stats, status_counts, df
+        return summary_df, fig_plat, fig_aff, fig_daily, fig_promo, None
 
     except Exception as e:
         import traceback
-        return f"解析错误：{str(e)}\n{traceback.format_exc()}", pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, None
+        return None, None, None, None, None, f"错误：{str(e)}\n{traceback.format_exc()}"
 
 
-# Gradio UI
-with gr.Blocks(title="Shopee 精选联盟数据分析", theme=gr.themes.Slate()) as demo:
-    gr.Markdown("# 🎯 Shopee 精选联盟数据分析")
-
+with gr.Blocks(title="Shopee 精选联盟数据分析", theme=gr.themes.Slate(
+    primary_hue="blue", secondary_hue="green"
+)) as demo:
+    gr.Markdown("# 🎯 Shopee 精选联盟数据分析\n\n上传从 Shopee 精选联盟导出的「达人转化报告」进行分析")
+    
     with gr.Row():
         file_input = gr.File(
-            label="上传精选联盟数据 (.xlsx / .xls / .csv)",
-            file_count=1,
-            file_types=[".xlsx", ".xls", ".csv"]
+            label="上传文件 (.xlsx / .xls / .csv)",
+            file_count=1, file_types=[".xlsx", ".xls", ".csv"],
+            scale=3
         )
-        analyze_btn = gr.Button("开始分析", variant="primary")
+        analyze_btn = gr.Button("🔍 开始分析", variant="primary", scale=1)
 
     with gr.Tabs():
-        with gr.TabItem("📊 概览"):
-            overview_out = gr.Markdown()
+        with gr.TabItem("📊 数据概览"):
+            overview_out = gr.DataFrame(label="核心指标")
         with gr.TabItem("📱 平台对比"):
-            plat_out = gr.DataFrame(label="平台分布")
+            plat_out = gr.Plot()
         with gr.TabItem("🏆 达人排行"):
-            aff_out = gr.DataFrame(label="TOP 20 达人")
+            aff_out = gr.Plot()
         with gr.TabItem("📈 每日趋势"):
-            daily_out = gr.DataFrame(label="每日数据")
+            daily_out = gr.Plot()
         with gr.TabItem("🎁 促销类型"):
-            promo_out = gr.DataFrame(label="促销类型佣金")
+            promo_out = gr.Plot()
+        with gr.TabItem("⚠️ 错误信息"):
+            err_out = gr.Textbox(label="错误信息", lines=10)
 
     analyze_btn.click(
         fn=analyze_affiliate,
         inputs=[file_input],
-        outputs=[overview_out, plat_out, aff_out, daily_out, promo_out]
+        outputs=[overview_out, plat_out, aff_out, daily_out, promo_out, err_out]
     )
 
 demo.launch(server_name="0.0.0.0", server_port=7860)
