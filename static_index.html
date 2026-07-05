@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shopee 精选联盟数据分析</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh}
+.topbar{background:#111;padding:16px 24px;border-bottom:1px solid #1f2937;display:flex;align-items:center;gap:10px;font-size:13px}
+.topbar a{color:#9ca3af;text-decoration:none}
+.topbar a:hover{color:#fff}
+.topbar span{color:#4b5563}
+.topbar h2{font-size:16px;font-weight:600;margin-left:auto}
+.main{max-width:1000px;margin:0 auto;padding:32px 24px}
+.upload-zone{border:2px dashed #2d3748;border-radius:16px;padding:48px 40px;cursor:pointer;transition:all .3s;background:#111827;text-align:center}
+.upload-zone:hover{border-color:#0ea5e9;background:rgba(14,165,233,.04)}
+.upload-zone .icon{font-size:48px;margin-bottom:12px}
+.upload-zone .title{font-size:17px;font-weight:600;margin-bottom:6px}
+.upload-zone .sub{font-size:13px;color:#6b7280}
+.upload-zone input{display:none}
+#flBox{margin-top:20px}
+.file-list{display:flex;flex-direction:column;gap:6px}
+.fi{display:flex;align-items:center;justify-content:space-between;background:#111827;border:1px solid #1f2937;border-radius:10px;padding:10px 14px;font-size:13px;cursor:pointer;transition:all .2s}
+.fi:hover{border-color:#0ea5e9;background:rgba(14,165,233,.06)}
+.fi .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fi .meta{color:#6b7280;margin-left:12px;font-size:12px}
+.fi .del{color:#ef4444;margin-left:12px;padding:2px 6px;border-radius:4px;font-size:12px}
+.fi .del:hover{background:#7f1d1d}
+
+/* 分析结果 */
+#resultBox{margin-top:32px;display:none}
+#resultBox.show{display:block}
+.section-title{font-size:15px;font-weight:600;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #1f2937;display:flex;align-items:center;gap:8px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:32px}
+.card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:20px}
+.card .label{font-size:11px;color:#6b7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.card .value{font-size:24px;font-weight:700}
+.card .value.green{color:#22c55e}
+.card .value.yellow{color:#eab308}
+.card .value.blue{color:#0ea5e9}
+.card .value.red{color:#ef4444}
+.card .value.orange{color:#f97316}
+.card .sub{font-size:12px;color:#6b7280;margin-top:4px}
+
+/* 图表区 */
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px}
+.chart-box{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:20px}
+.chart-box h3{font-size:14px;font-weight:600;margin-bottom:16px}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:13px}
+.bar-label{flex:0 0 100px;text-align:right;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-wrap{flex:1;height:20px;background:#1f2937;border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .6s ease}
+.bar-val{flex:0 0 90px;color:#fff;font-weight:600}
+
+/* 表格 */
+.tbl{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+.tbl th{background:#111827;padding:9px 12px;text-align:left;font-weight:600;border-bottom:1px solid #1f2937;color:#9ca3af;font-size:12px}
+.tbl td{padding:9px 12px;border-bottom:1px solid #1f2937}
+.tbl tr:hover td{background:rgba(14,165,233,.04)}
+.tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* 趋势图 */
+.trend-chart{margin-top:12px}
+.trend-row{display:flex;align-items:center;gap:0;height:32px;border-bottom:1px solid #1f2937;font-size:12px}
+.trend-date{flex:0 0 100px;padding:0 8px;color:#6b7280;border-right:1px solid #1f2937}
+.trend-bar-wrap{flex:1;padding:0 8px}
+.trend-bar{height:16px;background:linear-gradient(90deg,#0ea5e9,#22c55e);border-radius:3px;min-width:4px}
+.trend-val{flex:0 0 100px;text-align:right;font-weight:600;padding-left:8px}
+
+/* 标签 */
+.tag{display:inline-block;padding:2px 8px;border-radius:9999px;font-size:11px;background:#1f2937;color:#9ca3af}
+.tag.live{background:rgba(34,197,94,.15);color:#22c55e}
+.tag.wait{background:rgba(234,179,8,.15);color:#eab308}
+.tag.proc{background:rgba(14,165,233,.15);color:#0ea5e9}
+.tag.cancel{background:rgba(239,68,68,.15);color:#ef4444}
+
+/* 返回 */
+.back-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#111827;border:1px solid #1f2937;border-radius:8px;font-size:13px;color:#9ca3af;cursor:pointer;margin-bottom:24px}
+.back-btn:hover{background:#1f2937;color:#fff}
+
+/* 加载 */
+#lMask{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100}
+.lb{background:#1a1a2e;border-radius:16px;padding:40px 60px;text-align:center}
+.spin{font-size:36px;display:block;margin-bottom:16px;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.txt{font-size:15px;color:#9ca3af}
+
+/* 平台卡片 */
+.platform-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:16px}
+.pcard{background:#111827;border:1px solid #1f2937;border-radius:10px;padding:16px}
+.pcard .pname{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.pcard .pstats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pcard .pstat .v{font-size:18px;font-weight:700}
+.pcard .pstat .l{font-size:11px;color:#6b7280}
+
+/* 颜色 */
+.c-blue{color:#0ea5e9}.c-green{color:#22c55e}.c-yellow{color:#eab308}.c-red{color:#ef4444}.c-orange{color:#f97316}.c-purple{color:#a855f7}.c-pink{color:#ec4899}.c-cyan{color:#06b6d4}.c-teal{color:#14b8a6}
+.b-blue{background:#0ea5e9}.b-green{background:#22c55e}.b-yellow{background:#eab308}.b-red{background:#ef4444}.b-orange{background:#f97316}.b-purple{background:#a855f7}.b-pink{background:#ec4899}.b-cyan{background:#06b6d4}.b-teal{background:#14b8a6}
+
+@media(max-width:700px){
+.charts-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="topbar">
+    <a href="/">首页</a><span>/</span>
+    <a href="/shopee/">Shopee 订单分析</a><span>/</span>
+    <span style="color:#fff">精选联盟数据分析</span>
+    <h2>🎯 Shopee 精选联盟数据分析</h2>
+</div>
+
+<div class="main">
+    <div id="uploadArea">
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+            <div class="icon">🎯</div>
+            <div class="title">点击上传精选联盟数据文件</div>
+            <div class="sub">支持 .xls .xlsx .csv 格式</div>
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+        </div>
+        <div id="flBox"></div>
+    </div>
+    <div id="resultBox"></div>
+</div>
+
+<div id="lMask" style="display:none">
+    <div class="lb"><span class="spin">⏳</span><div class="txt" id="lTxt">正在分析...</div></div>
+</div>
+
+<script>
+var API='/shopee-affiliate/api';
+var _files=[],_cur=null;
+
+(function init(){
+    loadFiles();
+    document.getElementById('fileInput').addEventListener('change',function(e){
+        if(this.files.length)upload(this.files[0]);
+    });
+})();
+
+function loadFiles(){
+    fetch(API+'/files').then(r=>r.json()).then(d=>{
+        _files=d;
+        renderFiles();
+    });
+}
+
+function renderFiles(){
+    var box=document.getElementById('flBox');
+    if(!_files.length){box.innerHTML='';return;}
+    box.innerHTML='<div style="text-align:left;font-size:12px;color:#6b7280;margin-bottom:8px">历史文件</div><div class="file-list">'+
+        _files.map(f=>'<div class="fi" onclick="loadFile(\''+f.uid+'\')"><span class="name">'+escHtml(f.name)+'</span><span class="meta">'+f.size_kb+' KB</span><span class="del" onclick="event.stopPropagation();delFile(\''+f.uid+'\')">删除</span></div>').join('')+
+        '</div>';
+}
+
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function upload(file){
+    document.getElementById('lMask').style.display='flex';
+    document.getElementById('lTxt').textContent='正在上传...';
+    var fd=new FormData();
+    fd.append('file',file);
+    fetch(API+'/upload',{method:'POST',body:fd})
+        .then(r=>r.json())
+        .then(d=>{
+            if(d.error)alert(d.error);
+            else{_cur=d.uid;loadFiles();}
+            document.getElementById('lMask').style.display='none';
+        })
+        .catch(e=>{alert('上传失败:'+e);document.getElementById('lMask').style.display='none';});
+}
+
+function loadFile(uid){
+    _cur=uid;
+    document.getElementById('lMask').style.display='flex';
+    document.getElementById('lTxt').textContent='正在分析...';
+    fetch(API+'/files/'+uid).then(r=>r.json()).then(d=>{
+        document.getElementById('lMask').style.display='none';
+        showResult(d);
+    }).catch(e=>{alert('加载失败:'+e);document.getElementById('lMask').style.display='none';});
+}
+
+function delFile(uid){
+    if(!confirm('确定删除?'))return;
+    fetch(API+'/files/'+uid,{method:'DELETE'}).then(r=>r.json()).then(d=>{loadFiles();});
+}
+
+function fmtNum(n){
+    if(n>=1e9)return(n/1e9).toFixed(1)+'B';
+    if(n>=1e6)return(n/1e6).toFixed(1)+'M';
+    if(n>=1e3)return(n/1e3).toFixed(1)+'K';
+    return Number(n).toLocaleString('id-ID');
+}
+
+var COLORS=['#0ea5e9','#22c55e','#eab308','#ef4444','#f97316','#a855f7','#ec4899','#06b6d4','#14b8a6','#84cc16'];
+
+function showResult(d){
+    var a=d.analysis;
+    var rows=a.rows;
+    var total=a.total_records;
+
+    // 计算
+    var stats={
+        total_comm:0, settled_comm:0, pending_comm:0,
+        selesai:0, proses:0, belum:0, cancel:0, mcn:0,
+        unique_aff:0, platforms:new Set()
+    };
+    var statusMap={}, platMap={}, affMap={}, dateMap={}, prodMap={}, promoMap={};
+
+    for(var i=0;i<rows.length;i++){
+        var r=rows[i];
+        var comm=parseFloat(r['Estimasi Komisi Affiliate per Pesanan(Rp)'])||0;
+        var purch=parseFloat(r['Nilai Pembelian(Rp)'])||0;
+        var refund=parseFloat(r['Jumlah Pengembalian(Rp)'])||0;
+        var status=r['订单状态']||'';
+        var plat=r['Platform']||'';
+        var name=r['Nama Affiliate']||'';
+        var uname=r['Username Affiliate']||'';
+        var date=r['Waktu Pesanan']?r['Waktu Pesanan'].substring(0,10):'';
+        var prod=(r['产品名称']||'').substring(0,60);
+        var promo=r['Jenis Promo']||'';
+        var cut=r['Status Pemotongan']||'';
+        var mcn=parseFloat(r['Estimasi Komisi MCN per Pesanan(Rp)'])||0;
+
+        stats.total_comm+=comm;
+        if(cut==='Telah Dipotong'){stats.settled_comm+=comm;}
+        else{stats.pending_comm+=comm;}
+        stats.mcn+=mcn;
+
+        if(status==='Selesai')stats.selesai++;
+        else if(status==='Sedang Diproses')stats.proses++;
+        else if(status==='Belum Dibayar')stats.belum++;
+        else if(status==='Dibatalkan')stats.cancel++;
+
+        if(!statusMap[status])statusMap[status]={count:0,comm:0,purch:0};
+        statusMap[status].count++;statusMap[status].comm+=comm;statusMap[status].purch+=purch;
+
+        if(plat){
+            stats.platforms.add(plat);
+            if(!platMap[plat])platMap[plat]={count:0,comm:0,purch:0};
+            platMap[plat].count++;platMap[plat].comm+=comm;platMap[plat].purch+=purch;
+        }
+
+        if(name){
+            stats.unique_aff++;
+            if(!affMap[name])affMap[name]={name:name,username:uname,count:0,comm:0,purch:0};
+            affMap[name].count++;affMap[name].comm+=comm;affMap[name].purch+=purch;
+        }
+
+        if(date){
+            if(!dateMap[date])dateMap[date]={count:0,comm:0,purch:0};
+            dateMap[date].count++;dateMap[date].comm+=comm;dateMap[date].purch+=purch;
+        }
+
+        if(prod){
+            if(!prodMap[prod])prodMap[prod]={name:prod,count:0,comm:0,purch:0};
+            prodMap[prod].count++;prodMap[prod].comm+=comm;prodMap[prod].purch+=purch;
+        }
+
+        if(promo){
+            if(!promoMap[promo])promoMap[promo]={count:0,comm:0};
+            promoMap[promo].count++;promoMap[promo].comm+=comm;
+        }
+    }
+
+    // 排序
+    var topAff=Object.values(affMap).sort(function(a,b){return b.comm-a.comm}).slice(0,20);
+    var topProd=Object.values(prodMap).sort(function(a,b){return b.comm-a.comm}).slice(0,10);
+    var topPromo=Object.values(promoMap).sort(function(a,b){return b.comm-a.comm}).slice(0,5);
+    var dailyKeys=Object.keys(dateMap).sort();
+
+    var html='<button class="back-btn" onclick="showUpload()">← 返回上传</button>';
+
+    // === 概览卡片 ===
+    html+='<div class="section-title">📊 数据概览</div><div class="cards">';
+    html+='<div class="card"><div class="label">总订单</div><div class="value blue">'+total+'</div><div class="sub">'+a.date_range+'</div></div>';
+    html+='<div class="card"><div class="label">预计总佣金</div><div class="value green">Rp '+fmtNum(stats.total_comm)+'</div><div class="sub">已结算 '+fmtNum(stats.settled_comm)+'</div></div>';
+    html+='<div class="card"><div class="label">待结算佣金</div><div class="value yellow">Rp '+fmtNum(stats.pending_comm)+'</div><div class="sub">MCN佣金 '+fmtNum(stats.mcn)+'</div></div>';
+    html+='<div class="card"><div class="label">已完成订单</div><div class="value green">'+stats.selesai+'</div><div class="sub">进行中 '+stats.proses+' | 待付款 '+stats.belum+'</div></div>';
+    html+='<div class="card"><div class="label">合作达人</div><div class="value orange">'+stats.unique_aff+'</div><div class="sub">'+stats.platforms.size+' 个推广平台</div></div>';
+    html+='<div class="card"><div class="label">总销售额</div><div class="value">Rp '+fmtNum(stats.total_comm+stats.pending_comm)+'</div><div class="sub">已完成 Rp '+fmtNum(stats.settled_comm)+'</div></div>';
+    html+='</div>';
+
+    // === 订单状态分布 ===
+    html+='<div class="section-title">📋 订单状态分布</div><div class="charts-grid">';
+    var maxStatus=maxInObj(statusMap,'count');
+    html+='<div class="chart-box"><h3>订单数量</h3>';
+    var si=0;
+    for(var s in statusMap){
+        var sd=statusMap[s];
+        var pct=(sd.count/total*100).toFixed(1);
+        var w=(sd.count/maxStatus*100).toFixed(1);
+        var color=COLORS[si%COLORS.length];
+        var tagClass=s==='Selesai'?'live':s==='Sedang Diproses'?'proc':s==='Belum Dibayar'?'wait':'cancel';
+        html+='<div class="bar-row"><span class="bar-label"><span class="tag '+tagClass+'">'+escHtml(s)+'</span></span><div class="bar-wrap"><div class="bar-fill" style="width:'+w+'%;background:'+color+'"></div></div><span class="bar-val">'+sd.count+' ('+pct+'%)</span></div>';
+        si++;
+    }
+    html+='</div>';
+    var maxCommS=maxInObj(statusMap,'comm');
+    html+='<div class="chart-box"><h3>佣金分布 (Rp)</h3>';
+    si=0;
+    for(var s in statusMap){
+        var sd=statusMap[s];
+        var w=(sd.comm/maxCommS*100).toFixed(1);
+        var color=COLORS[si%COLORS.length];
+        var tagClass=s==='Selesai'?'live':s==='Sedang Diproses'?'proc':s==='Belum Dibayar'?'wait':'cancel';
+        html+='<div class="bar-row"><span class="bar-label"><span class="tag '+tagClass+'">'+escHtml(s)+'</span></span><div class="bar-wrap"><div class="bar-fill" style="width:'+w+'%;background:'+color+'"></div></div><span class="bar-val">Rp '+fmtNum(sd.comm)+'</span></div>';
+        si++;
+    }
+    html+='</div></div>';
+
+    // === 平台分布 ===
+    html+='<div class="section-title">📱 平台分布（'+Object.keys(platMap).length+' 个）</div>';
+    html+='<div class="platform-cards">';
+    var pi=0;
+    var sortedPlats=Object.entries(platMap).sort(function(a,b){return b[1].comm-a[1].comm});
+    for(var j=0;j<sortedPlats.length;j++){
+        var pe=sortedPlats[j];
+        var pd=pe[1];
+        var avg=pd.comm/pd.count;
+        var color=COLORS[pi%COLORS.length];
+        html+='<div class="pcard" style="border-left:3px solid '+color+'">';
+        html+='<div class="pname" style="color:'+color+'">'+escHtml(pe[0])+'</div>';
+        html+='<div class="pstats">';
+        html+='<div class="pstat"><div class="v">'+pd.count+'</div><div class="l">订单</div></div>';
+        html+='<div class="pstat"><div class="v" style="font-size:14px">'+fmtNum(pd.comm)+'</div><div class="l">佣金 Rp</div></div>';
+        html+='<div class="pstat"><div class="v" style="font-size:13px">'+fmtNum(avg)+'</div><div class="l">均佣金 Rp</div></div>';
+        html+='<div class="pstat"><div class="v" style="font-size:13px">'+fmtNum(pd.purch)+'</div><div class="l">销售额 Rp</div></div>';
+        html+='</div></div>';
+        pi++;
+    }
+    html+='</div>';
+
+    // === 每日趋势 ===
+    html+='<div class="section-title">📈 每日佣金趋势（'+dailyKeys.length+' 天）</div>';
+    var maxDaily=maxInObj(dateMap,'comm');
+    html+='<div class="chart-box"><h3>每日佣金趋势</h3><div class="trend-chart">';
+    for(var j=0;j<dailyKeys.length;j++){
+        var dk=dailyKeys[j];
+        var dd=dateMap[dk];
+        var w=(dd.comm/maxDaily*100).toFixed(1);
+        html+='<div class="trend-row">';
+        html+='<div class="trend-date">'+dk+'</div>';
+        html+='<div class="trend-bar-wrap"><div class="trend-bar" style="width:'+w+'%"></div></div>';
+        html+='<div class="trend-val">Rp '+fmtNum(dd.comm)+'</div>';
+        html+='</div>';
+    }
+    html+='</div></div>';
+
+    // 每日趋势右侧：促销类型
+    html+='<div class="chart-box"><h3>促销类型佣金</h3>';
+    if(topPromo.length>0){
+        var maxPromo=topPromo[0].comm;
+        for(var j=0;j<topPromo.length;j++){
+            var pr=topPromo[j];
+            var w=(pr.comm/maxPromo*100).toFixed(1);
+            var color=COLORS[j%COLORS.length];
+            html+='<div class="bar-row"><span class="bar-label" style="flex:0 0 150px">'+escHtml(pr.count>0?pr.name:'其他')+'</span><div class="bar-wrap"><div class="bar-fill" style="width:'+w+'%;background:'+color+'"></div></div><span class="bar-val">Rp '+fmtNum(pr.comm)+'</span></div>';
+        }
+    }
+    html+='</div></div>';
+
+    // === 达人排行榜 ===
+    html+='<div class="section-title">🏆 达人佣金排行榜 TOP 20</div>';
+    html+='<table class="tbl"><thead><tr><th>#</th><th>达人</th><th>用户名</th><th>订单</th><th>销售额 (Rp)</th><th>佣金 (Rp)</th><th>均佣 (Rp)</th></tr></thead><tbody>';
+    for(var j=0;j<topAff.length;j++){
+        var af=topAff[j];
+        var avg2=af.comm/af.count;
+        var color=COLORS[j%COLORS.length];
+        var medal=j<3?'🏅':(j+1);
+        html+='<tr>';
+        html+='<td style="color:'+color+';font-weight:700">'+medal+'</td>';
+        html+='<td>'+escHtml(af.name)+'</td>';
+        html+='<td style="color:#6b7280;font-size:12px">'+escHtml(af.username)+'</td>';
+        html+='<td class="num">'+af.count+'</td>';
+        html+='<td class="num">'+fmtNum(af.purch)+'</td>';
+        html+='<td class="num" style="color:#22c55e;font-weight:600">'+fmtNum(af.comm)+'</td>';
+        html+='<td class="num">'+fmtNum(avg2)+'</td>';
+        html+='</tr>';
+    }
+    html+='</tbody></table>';
+
+    // === 商品分布 ===
+    if(topProd.length>0){
+        html+='<div class="section-title">🏷️ 商品分布</div>';
+        html+='<table class="tbl"><thead><tr><th>#</th><th>商品名称</th><th>订单</th><th>销售额 (Rp)</th><th>佣金 (Rp)</th></tr></thead><tbody>';
+        for(var j=0;j<topProd.length;j++){
+            var pr=topProd[j];
+            var color=COLORS[j%COLORS.length];
+            html+='<tr><td style="color:'+color+';font-weight:700">'+(j+1)+'</td>';
+            html+='<td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(pr.name)+'">'+escHtml(pr.name)+'</td>';
+            html+='<td class="num">'+pr.count+'</td>';
+            html+='<td class="num">'+fmtNum(pr.purch)+'</td>';
+            html+='<td class="num" style="color:#22c55e;font-weight:600">'+fmtNum(pr.comm)+'</td></tr>';
+        }
+        html+='</tbody></table>';
+    }
+
+    document.getElementById('uploadArea').style.display='none';
+    document.getElementById('resultBox').innerHTML=html;
+    document.getElementById('resultBox').classList.add('show');
+}
+
+function maxInObj(obj,key){
+    var m=0;
+    for(var k in obj)if(obj[k][key]>m)m=obj[k][key];
+    return m||1;
+}
+
+function showUpload(){
+    document.getElementById('resultBox').classList.remove('show');
+    document.getElementById('resultBox').innerHTML='';
+    document.getElementById('uploadArea').style.display='block';
+}
+</script>
+</body>
+</html>
